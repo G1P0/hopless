@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/G1P0/hopless/internal/domain"
@@ -25,6 +26,11 @@ func NewCLI() *CLI {
 func (c *CLI) Run() {
 	fmt.Println("HOPLESS")
 	fmt.Println("no route. no hope.")
+
+	c.world.Links = []domain.Link{
+		{From: domain.Client, To: domain.Router},
+		{From: domain.Router, To: domain.Server},
+	}
 
 	for {
 		fmt.Println("\n--- MENU ---")
@@ -100,7 +106,7 @@ func (c *CLI) showRules() {
 		if r.Allow {
 			action = "ALLOW"
 		}
-		fmt.Printf("  #%d  %s  %s -> %s\n", i, action, r.Src, r.Dst)
+		fmt.Printf("  #%d  %s  %s:%d -> %s\n", i, action, r.Src, r.Port, r.Dst)
 	}
 }
 
@@ -117,6 +123,18 @@ func (c *CLI) addRule() {
 		fmt.Println("Unknown node:", toStr)
 		return
 	}
+
+	portStr := c.readLine("port (number, 0=ANY): ")
+	port, err := strconv.Atoi(strings.TrimSpace(portStr))
+	if err != nil {
+		fmt.Println("Not a number:", portStr)
+		return
+	}
+	if port < 0 || port > 65535 {
+		fmt.Println("Bad port:", port)
+		return
+	}
+
 	allowStr := strings.ToLower(c.readLine("allow? (yes/no): "))
 	var allow bool
 	switch allowStr {
@@ -129,7 +147,7 @@ func (c *CLI) addRule() {
 		return
 	}
 
-	c.world.Rules = append(c.world.Rules, domain.Rule{Src: from, Dst: to, Allow: allow})
+	c.world.Rules = append(c.world.Rules, domain.Rule{Src: from, Dst: to, Allow: allow, Port: port})
 	fmt.Println("Rule added.")
 }
 
@@ -157,6 +175,7 @@ func (c *CLI) ping() {
 		fmt.Println("Unknown node:", fromStr)
 		return
 	}
+
 	toStr := c.readLine("ping to   (client/router/server): ")
 	to, ok := parseNode(toStr)
 	if !ok {
@@ -164,10 +183,22 @@ func (c *CLI) ping() {
 		return
 	}
 
-	ok2, why := engine.CanReach(c.world, from, to)
+	portStr := c.readLine("port (number, 0=ANY): ")
+	var port int
+	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil || port < 0 || port > 65535 {
+		fmt.Println("Bad port.")
+		return
+	}
+
+	ok2, why := engine.CanReachRouted(c.world, engine.Query{
+		From: from,
+		To:   to,
+		Port: port,
+	})
+
 	if ok2 {
-		fmt.Printf("PING %s -> %s: OK (%s)\n", from, to, why)
+		fmt.Printf("PING %s -> %s port=%d: OK (%s)\n", from, to, port, why)
 	} else {
-		fmt.Printf("PING %s -> %s: FAIL (%s)\n", from, to, why)
+		fmt.Printf("PING %s -> %s port=%d: FAIL (%s)\n", from, to, port, why)
 	}
 }

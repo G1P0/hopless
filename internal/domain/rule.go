@@ -4,4 +4,5 @@ type Rule struct {
 	Src   Node
 	Dst   Node
 	Allow bool
+	Port  int
 }
